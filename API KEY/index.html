@@ -8,10 +8,11 @@
         .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
         h1 { color: #333; text-align: center; }
         h2 { color: #555; border-bottom: 2px solid #007bff; padding-bottom: 5px; }
-        form { margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input, select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 200px; }
-        button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        form { margin-bottom: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; align-items: end; }
+        label { display: block; margin-bottom: 5px; font-weight: 600; color: #333; }
+        input, select { padding: 10px; border: 1px solid #ddd; border-radius: 6px; width: 100%; box-sizing: border-box; }
+        .form-actions { display:flex; gap:8px; align-items:center; }
+        button { padding: 10px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
         button[type="submit"] { background-color: #007bff; color: white; }
         button[type="submit"]:hover { background-color: #0056b3; }
         #cancelBtn { background-color: #6c757d; color: white; }
@@ -40,16 +41,21 @@
             </div>
             <div>                <input type="hidden" id="editId">
             </div>
-            <div>                <label>Expiration:
-                    <select id="expType" onchange="toggleDate(this)">
+            <div>
+                <label>Expiration:
+                    <select id="expType" onchange="onExpTypeChange(this)">
                         <option value="permanent">Permanent</option>
-                        <option value="date">Date</option>
+                        <option value="1">1 day</option>
+                        <option value="15">15 days</option>
+                        <option value="30">30 days</option>
+                        <option value="date">Custom date...</option>
                     </select>
                 </label>
+                <div id="expPreview" style="margin-top:6px;color:#666;font-size:13px;"></div>
             </div>
             <div>
                 <input type="date" id="expDate" style="display: none;">
-            </div>
+            </div> 
             <div>
                 <button type="submit" id="submitBtn">Add Key</button>
                 <button type="button" id="cancelBtn" style="display: none;" onclick="cancelEdit()">Cancel</button>
@@ -73,13 +79,30 @@
         let keys = JSON.parse(localStorage.getItem('keys')) || [];
         let nextId = keys.length ? Math.max(...keys.map(k => k.id)) + 1 : 1;
 
+        function daysBetween(dateStr) {
+            const today = new Date();
+            const d = new Date(dateStr);
+            today.setHours(0,0,0,0);
+            d.setHours(0,0,0,0);
+            const ms = d - today;
+            return Math.round(ms / (1000*60*60*24));
+        }
+
+        function displayExpiration(exp) {
+            if (exp === 'permanent') return 'Permanent';
+            const days = daysBetween(exp);
+            if (days > 0) return `${exp} (${days} day(s) left)`;
+            if (days === 0) return `${exp} (expires today)`;
+            return `${exp} (expired)`;
+        }
+
         function renderTable() {
             let html = '<tr><th>ID</th><th>Key</th><th>Expiration</th><th>Actions</th></tr>';
             keys.forEach(key => {
                 html += `<tr>
                     <td>${key.id}</td>
                     <td>${key.key}</td>
-                    <td>${key.expiration}</td>
+                    <td>${displayExpiration(key.expiration)}</td>
                     <td>
                         <button class="edit-btn" onclick="editKey(${key.id})">Edit</button>
                         <button class="delete-btn" onclick="deleteKey(${key.id})">Delete</button>
@@ -100,38 +123,82 @@
                 expDate.style.display = 'none';
                 expDate.required = false;
             }
+            updateExpPreview(sel);
         }
+
+        function onExpTypeChange(sel) {
+            toggleDate(sel);
+            updateExpPreview(sel);
+        }
+
+        function computeExpirationFromType(expType) {
+            if (expType === 'permanent') return 'permanent';
+            if (expType === 'date') return document.getElementById('expDate').value;
+            const days = parseInt(expType, 10);
+            const d = new Date();
+            d.setDate(d.getDate() + days);
+            return d.toISOString().slice(0,10);
+        }
+
+        function updateExpPreview(sel) {
+            if (!sel) sel = document.getElementById('expType');
+            const preview = document.getElementById('expPreview');
+            if (!preview) return;
+            if (sel.value === 'permanent') {
+                preview.textContent = '';
+            } else if (sel.value === 'date') {
+                const v = document.getElementById('expDate').value;
+                preview.textContent = v ? `Expires on ${v}` : 'Choose a date';
+            } else {
+                const expiration = computeExpirationFromType(sel.value);
+                preview.textContent = `Expires on ${expiration}`;
+            }
+        }
+
+        document.getElementById('expDate').addEventListener('input', function() {
+            updateExpPreview(document.getElementById('expType'));
+        });
 
         document.getElementById('keyForm').addEventListener('submit', function(e) {
             e.preventDefault();
             const id = document.getElementById('editId').value;
-            const key = document.getElementById('keyInput').value;
+            const keyVal = document.getElementById('keyInput').value;
             const expType = document.getElementById('expType').value;
-            const expiration = expType === 'permanent' ? 'permanent' : document.getElementById('expDate').value;
+            const expiration = computeExpirationFromType(expType);
 
             if (id) {
                 const idx = keys.findIndex(k => k.id == id);
-                keys[idx] = { id: parseInt(id), key, expiration };
+                keys[idx] = { id: parseInt(id), key: keyVal, expiration };
             } else {
-                keys.push({ id: nextId++, key, expiration });
+                keys.push({ id: nextId++, key: keyVal, expiration });
             }
             renderTable();
             this.reset();
             document.getElementById('editId').value = '';
             document.getElementById('submitBtn').textContent = 'Add Key';
             document.getElementById('cancelBtn').style.display = 'none';
+            updateExpPreview(document.getElementById('expType'));
         });
 
         function editKey(id) {
             const key = keys.find(k => k.id == id);
             document.getElementById('editId').value = id;
             document.getElementById('keyInput').value = key.key;
-            const expType = document.getElementById('expType');
-            expType.value = key.expiration === 'permanent' ? 'permanent' : 'date';
-            toggleDate(expType);
-            if (key.expiration !== 'permanent') {
-                document.getElementById('expDate').value = key.expiration;
+            const expTypeEl = document.getElementById('expType');
+            if (key.expiration === 'permanent') {
+                expTypeEl.value = 'permanent';
+            } else {
+                const diff = daysBetween(key.expiration);
+                if (diff === 1 || diff === 15 || diff === 30) {
+                    expTypeEl.value = String(diff);
+                    document.getElementById('expDate').value = '';
+                } else {
+                    expTypeEl.value = 'date';
+                    document.getElementById('expDate').value = key.expiration;
+                }
             }
+            toggleDate(expTypeEl);
+            updateExpPreview(expTypeEl);
             document.getElementById('submitBtn').textContent = 'Update Key';
             document.getElementById('cancelBtn').style.display = 'inline';
         }
@@ -142,6 +209,7 @@
             document.getElementById('submitBtn').textContent = 'Add Key';
             document.getElementById('cancelBtn').style.display = 'none';
             toggleDate(document.getElementById('expType'));
+            updateExpPreview(document.getElementById('expType'));
         }
 
         function deleteKey(id) {
