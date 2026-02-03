@@ -1,0 +1,4 @@
+- [x] Create keys.json for storing keys
+- [x] Create index.php for the web interface
+- [x] Create api/check.php for the API endpoint
+- [x] Create vercel.json for Vercel deployment
