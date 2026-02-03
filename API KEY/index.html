@@ -38,9 +38,10 @@
             <div>
                 <label>Key: <input type="text" id="keyInput" required></label>
             </div>
-            <div>
-                <label>Expiration:
-                    <select id="expType" onchange="toggleDate()">
+            <div>                <input type="hidden" id="editId">
+            </div>
+            <div>                <label>Expiration:
+                    <select id="expType" onchange="toggleDate(this)">
                         <option value="permanent">Permanent</option>
                         <option value="date">Date</option>
                     </select>
@@ -73,24 +74,32 @@
         let nextId = keys.length ? Math.max(...keys.map(k => k.id)) + 1 : 1;
 
         function renderTable() {
-            const table = document.getElementById('keysTable');
-            table.innerHTML = '<tr><th>ID</th><th>Key</th><th>Expiration</th><th>Actions</th></tr>';
+            let html = '<tr><th>ID</th><th>Key</th><th>Expiration</th><th>Actions</th></tr>';
             keys.forEach(key => {
-                const row = table.insertRow();
-                row.insertCell().textContent = key.id;
-                row.insertCell().textContent = key.key;
-                row.insertCell().textContent = key.expiration;
-                const actions = row.insertCell();
-                actions.innerHTML = `
-                    <button class="edit-btn" onclick="editKey(${key.id})">Edit</button>
-                    <button class="delete-btn" onclick="deleteKey(${key.id})">Delete</button>
-                `;
+                html += `<tr>
+                    <td>${key.id}</td>
+                    <td>${key.key}</td>
+                    <td>${key.expiration}</td>
+                    <td>
+                        <button class="edit-btn" onclick="editKey(${key.id})">Edit</button>
+                        <button class="delete-btn" onclick="deleteKey(${key.id})">Delete</button>
+                    </td>
+                </tr>`;
             });
+            document.getElementById('keysTable').innerHTML = html;
             localStorage.setItem('keys', JSON.stringify(keys));
         }
 
-        function toggleDate() {
-            document.getElementById('expDate').style.display = document.getElementById('expType').value === 'date' ? 'inline' : 'none';
+        function toggleDate(sel) {
+            if (!sel) sel = document.getElementById('expType');
+            const expDate = document.getElementById('expDate');
+            if (sel.value === 'date') {
+                expDate.style.display = 'inline';
+                expDate.required = true;
+            } else {
+                expDate.style.display = 'none';
+                expDate.required = false;
+            }
         }
 
         document.getElementById('keyForm').addEventListener('submit', function(e) {
@@ -117,10 +126,11 @@
             const key = keys.find(k => k.id == id);
             document.getElementById('editId').value = id;
             document.getElementById('keyInput').value = key.key;
-            document.getElementById('expType').value = key.expiration === 'permanent' ? 'permanent' : 'date';
+            const expType = document.getElementById('expType');
+            expType.value = key.expiration === 'permanent' ? 'permanent' : 'date';
+            toggleDate(expType);
             if (key.expiration !== 'permanent') {
                 document.getElementById('expDate').value = key.expiration;
-                document.getElementById('expDate').style.display = 'inline';
             }
             document.getElementById('submitBtn').textContent = 'Update Key';
             document.getElementById('cancelBtn').style.display = 'inline';
@@ -131,7 +141,7 @@
             document.getElementById('editId').value = '';
             document.getElementById('submitBtn').textContent = 'Add Key';
             document.getElementById('cancelBtn').style.display = 'none';
-            toggleDate();
+            toggleDate(document.getElementById('expType'));
         }
 
         function deleteKey(id) {
