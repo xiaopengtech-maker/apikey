@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Key Manager</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        form { margin-bottom: 20px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .edit-form { display: none; }
+    </style>
+</head>
+<body>
+    <h1>API Key Manager</h1>
+
+    <form id="keyForm">
+        <input type="hidden" id="editId">
+        <label>Key: <input type="text" id="keyInput" required></label><br>
+        <label>Expiration:
+            <select id="expType" onchange="toggleDate()">
+                <option value="permanent">Permanent</option>
+                <option value="date">Date</option>
+            </select>
+        </label>
+        <input type="date" id="expDate" style="display: none;"><br>
+        <button type="submit" id="submitBtn">Add Key</button>
+        <button type="button" id="cancelBtn" style="display: none;" onclick="cancelEdit()">Cancel</button>
+    </form>
+
+    <h2>Keys</h2>
+    <table id="keysTable">
+        <tr><th>ID</th><th>Key</th><th>Expiration</th><th>Actions</th></tr>
+    </table>
+
+    <h2>Check Key</h2>
+    <form id="checkForm">
+        <label>Key: <input type="text" id="checkKey" required></label>
+        <button type="submit">Check</button>
+    </form>
+    <p id="checkResult"></p>
+
+    <script>
+        let keys = JSON.parse(localStorage.getItem('keys')) || [];
+        let nextId = keys.length ? Math.max(...keys.map(k => k.id)) + 1 : 1;
+
+        function renderTable() {
+            const table = document.getElementById('keysTable');
+            table.innerHTML = '<tr><th>ID</th><th>Key</th><th>Expiration</th><th>Actions</th></tr>';
+            keys.forEach(key => {
+                const row = table.insertRow();
+                row.insertCell().textContent = key.id;
+                row.insertCell().textContent = key.key;
+                row.insertCell().textContent = key.expiration;
+                const actions = row.insertCell();
+                actions.innerHTML = `
+                    <button onclick="editKey(${key.id})">Edit</button>
+                    <button onclick="deleteKey(${key.id})">Delete</button>
+                `;
+            });
+            localStorage.setItem('keys', JSON.stringify(keys));
+        }
+
+        function toggleDate() {
+            document.getElementById('expDate').style.display = document.getElementById('expType').value === 'date' ? 'inline' : 'none';
+        }
+
+        document.getElementById('keyForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const id = document.getElementById('editId').value;
+            const key = document.getElementById('keyInput').value;
+            const expType = document.getElementById('expType').value;
+            const expiration = expType === 'permanent' ? 'permanent' : document.getElementById('expDate').value;
+
+            if (id) {
+                const idx = keys.findIndex(k => k.id == id);
+                keys[idx] = { id: parseInt(id), key, expiration };
+            } else {
+                keys.push({ id: nextId++, key, expiration });
+            }
+            renderTable();
+            this.reset();
+            document.getElementById('editId').value = '';
+            document.getElementById('submitBtn').textContent = 'Add Key';
+            document.getElementById('cancelBtn').style.display = 'none';
+        });
+
+        function editKey(id) {
+            const key = keys.find(k => k.id == id);
+            document.getElementById('editId').value = id;
+            document.getElementById('keyInput').value = key.key;
+            document.getElementById('expType').value = key.expiration === 'permanent' ? 'permanent' : 'date';
+            if (key.expiration !== 'permanent') {
+                document.getElementById('expDate').value = key.expiration;
+                document.getElementById('expDate').style.display = 'inline';
+            }
+            document.getElementById('submitBtn').textContent = 'Update Key';
+            document.getElementById('cancelBtn').style.display = 'inline';
+        }
+
+        function cancelEdit() {
+            document.getElementById('keyForm').reset();
+            document.getElementById('editId').value = '';
+            document.getElementById('submitBtn').textContent = 'Add Key';
+            document.getElementById('cancelBtn').style.display = 'none';
+            toggleDate();
+        }
+
+        function deleteKey(id) {
+            if (confirm('Delete key?')) {
+                keys = keys.filter(k => k.id != id);
+                renderTable();
+            }
+        }
+
+        document.getElementById('checkForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const checkKey = document.getElementById('checkKey').value;
+            const result = document.getElementById('checkResult');
+            const key = keys.find(k => k.key === checkKey);
+            if (!key) {
+                result.textContent = 'Key not found.';
+                return;
+            }
+            if (key.expiration === 'permanent') {
+                result.textContent = 'Key is valid (permanent).';
+            } else if (new Date(key.expiration) > new Date()) {
+                result.textContent = 'Key is valid.';
+            } else {
+                result.textContent = 'Key has expired.';
+            }
+        });
+
+        renderTable();
+    </script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Check Key</title>
+</head>
+<body>
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const key = urlParams.get('key');
+        const keys = JSON.parse(localStorage.getItem('keys')) || [];
+        let valid = false;
+        if (key) {
+            const k = keys.find(k => k.key === key);
+            if (k) {
+                if (k.expiration === 'permanent') {
+                    valid = true;
+                } else if (new Date(k.expiration) > new Date()) {
+                    valid = true;
+                }
+            }
+        }
+        document.body.innerHTML = JSON.stringify({ valid });
+    </script>
+</body>
+</html>
