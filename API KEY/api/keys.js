@@ -1,0 +1,104 @@
+const fs = require('fs').promises;
+const path = require('path');
+
+const DATA_FILE = path.join(__dirname, 'keys.json');
+
+async function readData() {
+  try {
+    const txt = await fs.readFile(DATA_FILE, 'utf8');
+    return JSON.parse(txt);
+  } catch (err) {
+    if (err.code === 'ENOENT') return [];
+    throw err;
+  }
+}
+
+async function writeData(data) {
+  await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2), 'utf8');
+}
+
+function sendJSON(res, status, obj) {
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.statusCode = status;
+  res.end(JSON.stringify(obj));
+}
+
+module.exports = async (req, res) => {
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.statusCode = 204;
+    res.end();
+    return;
+  }
+
+  try {
+    const keys = await readData();
+
+    if (req.method === 'GET') {
+      sendJSON(res, 200, keys);
+      return;
+    }
+
+    // parse body
+    let body = req.body;
+    if (!body) {
+      let raw = '';
+      for await (const chunk of req) raw += chunk;
+      body = raw ? JSON.parse(raw) : {};
+    }
+
+    if (req.method === 'POST') {
+      const { key, expiration, expType } = body;
+      if (!key) return sendJSON(res, 400, { error: 'Missing key' });
+
+      let finalExpiration = 'permanent';
+      if (expiration) finalExpiration = expiration;
+      else if (expType) {
+        if (expType === 'permanent') finalExpiration = 'permanent';
+        else if (expType === 'date') finalExpiration = body.expDate || '';
+        else {
+          const days = parseInt(expType, 10);
+          const d = new Date();
+          d.setDate(d.getDate() + days);
+          finalExpiration = d.toISOString().slice(0,10);
+        }
+      }
+
+      const nextId = keys.length ? Math.max(...keys.map(k => k.id)) + 1 : 1;
+      const item = { id: nextId, key, expiration: finalExpiration };
+      keys.push(item);
+      await writeData(keys);
+      sendJSON(res, 201, item);
+      return;
+    }
+
+    if (req.method === 'PUT') {
+      const { id, key, expiration } = body;
+      if (!id) return sendJSON(res, 400, { error: 'Missing id' });
+      const idx = keys.findIndex(k => k.id == id);
+      if (idx === -1) return sendJSON(res, 404, { error: 'Not found' });
+      keys[idx] = { id: parseInt(id), key: key ?? keys[idx].key, expiration: expiration ?? keys[idx].expiration };
+      await writeData(keys);
+      sendJSON(res, 200, keys[idx]);
+      return;
+    }
+
+    if (req.method === 'DELETE') {
+      const { id } = body;
+      if (!id) return sendJSON(res, 400, { error: 'Missing id' });
+      const newKeys = keys.filter(k => k.id != id);
+      await writeData(newKeys);
+      sendJSON(res, 200, { success: true });
+      return;
+    }
+
+    sendJSON(res, 405, { error: 'Method not allowed' });
+  } catch (err) {
+    console.error(err);
+    sendJSON(res, 500, { error: 'Server error' });
+  }
+};

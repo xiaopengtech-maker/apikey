@@ -73,11 +73,45 @@
             <button type="submit">Check</button>
         </form>
         <p id="checkResult"></p>
+
+        <h2>API (test)</h2>
+        <form id="apiTestForm">
+            <label>Key: <input type="text" id="apiKey" required></label>
+            <label>Expiration:
+                <select id="apiExpType">
+                    <option value="permanent">Permanent</option>
+                    <option value="1">1 day</option>
+                    <option value="15">15 days</option>
+                    <option value="30">30 days</option>
+                    <option value="date">Custom date...</option>
+                </select>
+            </label>
+            <input type="date" id="apiExpDate" style="display:none;">
+            <button type="submit">Send POST</button>
+        </form>
+        <pre id="apiResult" style="background:#f3f3f3;padding:10px;border-radius:6px;min-height:40px;"></pre>
     </div>
 
     <script>
-        let keys = JSON.parse(localStorage.getItem('keys')) || [];
-        let nextId = keys.length ? Math.max(...keys.map(k => k.id)) + 1 : 1;
+        let keys = [];
+        let nextId = 1;
+
+        async function fetchKeys() {
+            try {
+                const res = await fetch('/api/keys');
+                if (!res.ok) throw new Error('Network response not ok');
+                keys = await res.json();
+                nextId = keys.length ? Math.max(...keys.map(k => k.id)) + 1 : 1;
+                renderTable();
+                // keep localStorage in sync
+                localStorage.setItem('keys', JSON.stringify(keys));
+            } catch (err) {
+                console.warn('API failed, falling back to localStorage', err);
+                keys = JSON.parse(localStorage.getItem('keys')) || [];
+                nextId = keys.length ? Math.max(...keys.map(k => k.id)) + 1 : 1;
+                renderTable();
+            }
+        }
 
         function daysBetween(dateStr) {
             const today = new Date();
@@ -131,9 +165,9 @@
             updateExpPreview(sel);
         }
 
-        function computeExpirationFromType(expType) {
+        function computeExpirationFromType(expType, dateElId='expDate') {
             if (expType === 'permanent') return 'permanent';
-            if (expType === 'date') return document.getElementById('expDate').value;
+            if (expType === 'date') return document.getElementById(dateElId).value;
             const days = parseInt(expType, 10);
             const d = new Date();
             d.setDate(d.getDate() + days);
@@ -155,32 +189,87 @@
             }
         }
 
+        // API utilities
+        async function createKeyAPI(payload) {
+            const res = await fetch('/api/keys', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error('Create failed');
+            return res.json();
+        }
+        async function updateKeyAPI(payload) {
+            const res = await fetch('/api/keys', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error('Update failed');
+            return res.json();
+        }
+        async function deleteKeyAPI(id) {
+            const res = await fetch('/api/keys', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id })
+            });
+            if (!res.ok) throw new Error('Delete failed');
+            return res.json();
+        }
+
         document.getElementById('expDate').addEventListener('input', function() {
             updateExpPreview(document.getElementById('expType'));
         });
 
-        document.getElementById('keyForm').addEventListener('submit', function(e) {
+        // API test form show/hide date
+        document.getElementById('apiExpType').addEventListener('change', function() {
+            const d = document.getElementById('apiExpDate');
+            if (this.value === 'date') { d.style.display = 'inline'; d.required = true; }
+            else { d.style.display = 'none'; d.required = false; }
+        });
+
+        document.getElementById('apiTestForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const key = document.getElementById('apiKey').value;
+            const expType = document.getElementById('apiExpType').value;
+            const expDate = document.getElementById('apiExpDate').value;
+            const payload = { key };
+            if (expType === 'date') payload.expiration = expDate; else payload.expType = expType;
+            try {
+                const result = await createKeyAPI(payload);
+                document.getElementById('apiResult').textContent = JSON.stringify(result, null, 2);
+                await fetchKeys();
+            } catch (err) {
+                document.getElementById('apiResult').textContent = 'Error: ' + err.message;
+            }
+        });
+
+        document.getElementById('keyForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             const id = document.getElementById('editId').value;
             const keyVal = document.getElementById('keyInput').value;
             const expType = document.getElementById('expType').value;
             const expiration = computeExpirationFromType(expType);
 
-            if (id) {
-                const idx = keys.findIndex(k => k.id == id);
-                keys[idx] = { id: parseInt(id), key: keyVal, expiration };
-            } else {
-                keys.push({ id: nextId++, key: keyVal, expiration });
+            try {
+                if (id) {
+                    await updateKeyAPI({ id: parseInt(id), key: keyVal, expiration });
+                } else {
+                    await createKeyAPI({ key: keyVal, expiration });
+                }
+                await fetchKeys();
+                this.reset();
+                document.getElementById('editId').value = '';
+                document.getElementById('submitBtn').textContent = 'Add Key';
+                document.getElementById('cancelBtn').style.display = 'none';
+                updateExpPreview(document.getElementById('expType'));
+            } catch (err) {
+                alert('API error: ' + err.message);
             }
-            renderTable();
-            this.reset();
-            document.getElementById('editId').value = '';
-            document.getElementById('submitBtn').textContent = 'Add Key';
-            document.getElementById('cancelBtn').style.display = 'none';
-            updateExpPreview(document.getElementById('expType'));
         });
 
-        function editKey(id) {
+        async function editKey(id) {
             const key = keys.find(k => k.id == id);
             document.getElementById('editId').value = id;
             document.getElementById('keyInput').value = key.key;
@@ -203,19 +292,14 @@
             document.getElementById('cancelBtn').style.display = 'inline';
         }
 
-        function cancelEdit() {
-            document.getElementById('keyForm').reset();
-            document.getElementById('editId').value = '';
-            document.getElementById('submitBtn').textContent = 'Add Key';
-            document.getElementById('cancelBtn').style.display = 'none';
-            toggleDate(document.getElementById('expType'));
-            updateExpPreview(document.getElementById('expType'));
-        }
-
-        function deleteKey(id) {
+        async function deleteKey(id) {
             if (confirm('Delete key?')) {
-                keys = keys.filter(k => k.id != id);
-                renderTable();
+                try {
+                    await deleteKeyAPI(id);
+                    await fetchKeys();
+                } catch (err) {
+                    alert('Delete failed: ' + err.message);
+                }
             }
         }
 
@@ -237,7 +321,7 @@
             }
         });
 
-        renderTable();
+        fetchKeys();
     </script>
 </body>
 </html>
