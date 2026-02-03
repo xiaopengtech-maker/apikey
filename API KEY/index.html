@@ -98,7 +98,7 @@
 
         async function fetchKeys() {
             try {
-                const res = await fetch('/api/keys');
+                const res = await fetch('/api/keys-api');
                 if (!res.ok) throw new Error('Network response not ok');
                 keys = await res.json();
                 nextId = keys.length ? Math.max(...keys.map(k => k.id)) + 1 : 1;
@@ -191,7 +191,7 @@
 
         // API utilities
         async function createKeyAPI(payload) {
-            const res = await fetch('/api/keys', {
+            const res = await fetch('/api/keys-api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -200,7 +200,7 @@
             return res.json();
         }
         async function updateKeyAPI(payload) {
-            const res = await fetch('/api/keys', {
+            const res = await fetch('/api/keys-api', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -209,7 +209,7 @@
             return res.json();
         }
         async function deleteKeyAPI(id) {
-            const res = await fetch('/api/keys', {
+            const res = await fetch('/api/keys-api', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id })
